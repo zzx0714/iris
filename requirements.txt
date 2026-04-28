@@ -1,0 +1,8 @@
+torch>=2.0.0
+tensorboard
+einops>=0.7.0
+tqdm
+pillow
+pyarrow
+pandas
+numpy
