@@ -61,8 +61,8 @@ class EvalConfig:
     attn_resolutions = [16]
     # WorldModel (must match train config)
     wm_num_layers = 10
-    wm_num_heads  = 7
-    wm_embed_dim  = 448
+    wm_num_heads  = 8
+    wm_embed_dim  = 512
     wm_max_blocks = 20
     act_dim       = 7
     device       = "cuda"
