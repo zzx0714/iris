@@ -57,8 +57,8 @@ class TrainConfig:
 
     # WorldModel (aligned with official IRIS)
     wm_num_layers  = 10
-    wm_num_heads   = 4
-    wm_embed_dim   = 256
+    wm_num_heads   = 7
+    wm_embed_dim   = 448
     wm_embed_pdrop = 0.1
     wm_resid_pdrop = 0.1
     wm_attn_pdrop  = 0.1
