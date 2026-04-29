@@ -14,7 +14,7 @@ class RetrievalConfig:
     stride       = 5
     seq_len      = 5
     batch_size   = 1  # One episode per batch for retrieval
-    num_workers  = 4
+    num_workers  = 8
     vocab_size   = 1024
     embed_dim    = 512
     ch           = 128

@@ -317,12 +317,11 @@ class DroidDataset(IterableDataset):
             random.shuffle(ep_ids)
 
         for ep_id in ep_ids:
-            sample = self._fetch_episode(ep_id)
-            if sample is None:
-                continue
-            yield sample
+            for sample in self._fetch_all_subsequences(ep_id):
+                yield sample
 
-    def _fetch_episode(self, ep_id: int) -> Optional[dict]:
+    def _fetch_all_subsequences(self, ep_id: int):
+        """Yield all possible seq_len-length subsequences for one episode."""
         cam_key = self._get_camera(ep_id)
         cache_key = (ep_id, cam_key)
 
@@ -336,7 +335,7 @@ class DroidDataset(IterableDataset):
             data = _load_episode_data(ep_id, cam_key, self.stride)
 
         if data is None:
-            return None
+            return
 
         frames   = data["frames"]    # (N, H, W, 3) uint8
         states   = data["states"]     # (N, 7) float32
@@ -345,41 +344,35 @@ class DroidDataset(IterableDataset):
 
         N = len(frames)
         if N < self.seq_len:
-            return None
+            return
 
-        # Random contiguous subsequence of length seq_len
-        import random
-        start = random.randint(0, N - self.seq_len)
-        end   = start + self.seq_len
-
-        # Resize frames to img_size (using PIL for reliability)
+        # Resize ALL frames once (avoid repeated resize per subsequence)
         try:
             from PIL import Image
-            frames_crop = []
-            for f in frames[start:end]:
+            frames_resized = []
+            for f in frames:
                 img = Image.fromarray(f)
                 resized = img.resize((self.img_size, self.img_size), Image.BILINEAR)
-                frames_crop.append(np.array(resized))
-            frames_crop = np.stack(frames_crop, axis=0)  # (T, H, W, 3)
+                frames_resized.append(np.array(resized))
+            frames_resized = np.stack(frames_resized, axis=0)  # (N, H, W, 3)
         except ImportError:
-            # Fallback: bilinear resize with torch
-            f_t = torch.from_numpy(frames[start:end]).float().permute(0, 3, 1, 2) / 255.0
+            f_t = torch.from_numpy(frames).float().permute(0, 3, 1, 2) / 255.0
             f_t = F.interpolate(f_t, size=(self.img_size, self.img_size), mode="bilinear", align_corners=False)
-            frames_crop = (f_t * 255).permute(0, 2, 3, 1).numpy().astype(np.uint8)
+            frames_resized = (f_t * 255).permute(0, 2, 3, 1).numpy().astype(np.uint8)
 
-        # No normalization for states/actions - use raw values
-        # Action is state difference: action[t] = state[t+stride] - state[t]
-        states_np = np.array(states[start:end], dtype=np.float32)
-        actions_np = np.array(actions[start:end], dtype=np.float32)
+        states_np  = np.array(states, dtype=np.float32)
+        actions_np = np.array(actions, dtype=np.float32)
 
-        return {
-            "observations": torch.from_numpy(frames_crop).permute(0, 3, 1, 2).byte(),   # (T, 3, H, W)
-            "actions":     torch.from_numpy(actions_np).float(),
-            "states":      torch.from_numpy(states_np).float(),
-            "mask_padding": torch.ones(self.seq_len, dtype=torch.bool),
-            "episode_idx":  ep_id,
-            "frame_idx":   torch.tensor(frm_idxs[start:end]),
-        }
+        for start in range(N - self.seq_len + 1):
+            end = start + self.seq_len
+            yield {
+                "observations": torch.from_numpy(frames_resized[start:end]).permute(0, 3, 1, 2).byte(),
+                "actions":     torch.from_numpy(actions_np[start:end]).copy(),
+                "states":      torch.from_numpy(states_np[start:end]).copy(),
+                "mask_padding": torch.ones(self.seq_len, dtype=torch.bool),
+                "episode_idx":  ep_id,
+                "frame_idx":   torch.tensor(frm_idxs[start:end]),
+            }
 
     def collate_fn(self, batch: List[dict]) -> Batch:
         """Simple collate: stack all tensors."""
