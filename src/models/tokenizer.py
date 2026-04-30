@@ -152,8 +152,9 @@ class Tokenizer(nn.Module):
         recon_loss = F.l1_loss(obs_in, recon, reduction="mean")
 
         # Perceptual loss (LPIPS params are frozen, but gradients flow to recon).
+        # Force float32 to avoid negative values under AMP float16.
         if self.lpips:
-            perc_loss = self.lpips(obs_in, recon).mean()
+            perc_loss = self.lpips(obs_in.float(), recon.float()).float().mean()
         else:
             perc_loss = torch.tensor(0.0, device=observations.device)
 

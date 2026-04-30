@@ -79,7 +79,7 @@ class TrainConfig:
 
     weight_decay = 0.01
     grad_clip    = 10.0
-    num_workers  = 2
+    num_workers  = 6
     save_every   = 5
     val_batches  = 50
 
@@ -149,7 +149,8 @@ def to_device(batch: Batch, device):
     )
 
 
-def train_tokenizer(tokenizer, train_loader, cfg, device, exp_dir):
+def train_tokenizer(tokenizer, train_loader, cfg, device, exp_dir,
+                    resume_path=None):
     """Stage 1: Train Tokenizer only."""
     print("\n" + "="*60)
     print("STAGE 1: TRAINING TOKENIZER")
@@ -161,10 +162,24 @@ def train_tokenizer(tokenizer, train_loader, cfg, device, exp_dir):
     opt = optim.AdamW(tokenizer.parameters(), lr=cfg.lr_tokenizer, weight_decay=cfg.weight_decay)
     scaler = GradScaler('cuda')
 
+    start_epoch = 0
+
+    # Resume from checkpoint if provided
+    if resume_path:
+        print(f"[Resuming Tokenizer] from {resume_path}")
+        ckpt = torch.load(resume_path, map_location=device, weights_only=False)
+        tokenizer.load_state_dict(ckpt["tokenizer"])
+        if "opt" in ckpt:
+            opt.load_state_dict(ckpt["opt"])
+            print(f"  Restored optimizer state")
+        if "epoch" in ckpt:
+            start_epoch = ckpt["epoch"] + 1
+            print(f"  Resuming from epoch {start_epoch}")
+
     n_params = sum(p.numel() for p in tokenizer.parameters())
     print(f"[Tokenizer] params: {n_params/1e6:.1f}M")
 
-    for epoch in range(cfg.tok_epochs):
+    for epoch in range(start_epoch, cfg.tok_epochs):
         tokenizer.train()
         pbar = tqdm(train_loader, desc=f"Tok Epoch {epoch+1}/{cfg.tok_epochs}")
 
@@ -424,12 +439,10 @@ def main():
     # ---- Stage Selection ----
     if args.stage in ["tokenizer", "both"]:
         # Train tokenizer
-        if args.resume_tokenizer:
-            ckpt = torch.load(args.resume_tokenizer, map_location=device, weights_only=False)
-            tokenizer.load_state_dict(ckpt["tokenizer"])
-            print(f"[Resumed Tokenizer] from {args.resume_tokenizer}")
-
-        tokenizer = train_tokenizer(tokenizer, train_loader, cfg, device, exp_dir)
+        tokenizer = train_tokenizer(
+            tokenizer, train_loader, cfg, device, exp_dir,
+            resume_path=args.resume_tokenizer,
+        )
 
     if args.stage in ["worldmodel", "both"]:
         # Load tokenizer from checkpoint

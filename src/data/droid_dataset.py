@@ -302,7 +302,9 @@ class DroidDataset(IterableDataset):
         return random.choice(self.all_cameras)
 
     def __len__(self):
-        return len(self.episode_ids)
+        # Approximate: each episode yields ~46 subsequences (N_sampled - seq_len + 1)
+        # Actual count varies per episode; this is for display only
+        return len(self.episode_ids) * 46
 
     def __iter__(self):
         import random
@@ -367,8 +369,8 @@ class DroidDataset(IterableDataset):
             end = start + self.seq_len
             yield {
                 "observations": torch.from_numpy(frames_resized[start:end]).permute(0, 3, 1, 2).byte(),
-                "actions":     torch.from_numpy(actions_np[start:end]).copy(),
-                "states":      torch.from_numpy(states_np[start:end]).copy(),
+                "actions":     torch.from_numpy(actions_np[start:end]).clone(),
+                "states":      torch.from_numpy(states_np[start:end]).clone(),
                 "mask_padding": torch.ones(self.seq_len, dtype=torch.bool),
                 "episode_idx":  ep_id,
                 "frame_idx":   torch.tensor(frm_idxs[start:end]),
